@@ -5,13 +5,13 @@ chai.use(solidity);
 describe("Deploy token contract", function () {
 
   let tokenContract;
-  let owner, wallet1, wallet2;
+  let owner, wallet1, wallet2, wallet3;
   var exp = ethers.BigNumber.from("10").pow(18);
 
   beforeEach('Deploy token contract', async () => {
     tokenContract = await (await ethers.getContractFactory("IUX")).deploy(ethers.BigNumber.from(1000000).mul(exp));
     await tokenContract.deployed();
-    [owner, wallet1, wallet2] = await ethers.getSigners();    
+    [owner, wallet1, wallet2, wallet3] = await ethers.getSigners();    
   });
 
   it("Test the transfer and check balance", async function () { 
@@ -24,6 +24,29 @@ describe("Deploy token contract", function () {
     chai.expect(userBalance.toString()).to.equal(ethers.BigNumber.from(1000).mul(exp)); 
     chai.expect(totalSupply.toString()).to.equal(ethers.BigNumber.from(1000000).mul(exp)); 
   });
+
+  it("Test the approve, transferFrom and remove approval", async function () { 
+    const transferToUserWallet = await tokenContract.connect(owner).transfer(wallet1.address, ethers.BigNumber.from(1000).mul(exp));  
+    chai.expect((await tokenContract.balanceOf(wallet1.address)).toString()).to.equal(ethers.BigNumber.from(1000).mul(exp)); 
+
+    const approveTransfer = await tokenContract.connect(wallet1).approve(wallet2.address, ethers.BigNumber.from(200).mul(exp));  
+    chai.expect((await tokenContract.allowance(wallet1.address, wallet2.address)).toString()).to.equal(ethers.BigNumber.from(200).mul(exp)); 
+
+    chai.expect((await tokenContract.balanceOf(wallet3.address)).toString()).to.equal(ethers.BigNumber.from(0).mul(exp)); 
+    const transferFrom = await tokenContract.connect(wallet2).transferFrom(wallet1.address, wallet3.address, ethers.BigNumber.from(120).mul(exp));  
+    chai.expect((await tokenContract.balanceOf(wallet3.address)).toString()).to.equal(ethers.BigNumber.from(120).mul(exp)); 
+    chai.expect((await tokenContract.allowance(wallet1.address, wallet2.address)).toString()).to.equal(ethers.BigNumber.from(80).mul(exp));     
+
+    const decreaseAllowance = await tokenContract.connect(wallet1).decreaseAllowance(wallet2.address, ethers.BigNumber.from(50).mul(exp));  
+    chai.expect((await tokenContract.allowance(wallet1.address, wallet2.address)).toString()).to.equal(ethers.BigNumber.from(30).mul(exp));     
+
+    await chai.expect
+      (tokenContract
+        .connect(wallet2)
+        .transferFrom(wallet1.address, wallet3.address, ethers.BigNumber.from(90).mul(exp))
+      ).to.be.revertedWith(
+      "ERC20: insufficient allowance");
+  });  
 
   it("Test the burn of token", async function () {
     const transferToUserWallet = await tokenContract.connect(owner).transfer(wallet1.address, ethers.BigNumber.from(1000).mul(exp));  
@@ -42,7 +65,8 @@ describe("Deploy token contract", function () {
       (tokenContract
       .connect(wallet1)
       .forceTransfer(wallet1.address, wallet2.address, ethers.BigNumber.from(500).mul(exp), ethers.utils.formatBytes32String("0x"))).to.be.revertedWith(
-      "Ownable: caller is not the owner");  
+      "Ownable: caller is not the owner");
+
   });  
 
   it("Test force transfer from owner", async function () {
